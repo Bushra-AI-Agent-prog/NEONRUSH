@@ -4,15 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags:
+      - "v*"
     paths:
       - "neonbus.zip"
       - ".github/workflows/build.yml"
       - "game/**"
   pull_request:
     branches: [main]
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
