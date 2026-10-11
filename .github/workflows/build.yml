@@ -103,7 +103,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PRESET="$(awk -F'"' '/^\\[preset\\./ { inside=1; next } /^\\[/ { inside=0 } inside && /^name=/ { print $2; exit }' game/export_presets.cfg)"
+          PRESET="$(grep '^name=' game/export_presets.cfg | head -n 1 | cut -d '"' -f 2)"
           if [ -z "$PRESET" ]; then
             echo "::error::No export preset name found in game/export_presets.cfg"
             exit 1
