@@ -1,0 +1,8 @@
+.godot/
+build/
+*.translation
+.mono/
+export_credentials.cfg
+*.keystore
+*.jks
+user://
