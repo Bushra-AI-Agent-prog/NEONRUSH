@@ -1,0 +1,94 @@
+name: NEONRUSH Android APK Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "neonbus.zip"
+      - ".github/workflows/build.yml"
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract game project ZIP
+        run: |
+          set -e
+          ZIP_FILE="$(find . -maxdepth 2 -type f -iname '*.zip' ! -path './.git/*' | head -n 1)"
+          if [ -z "$ZIP_FILE" ]; then
+            echo "::error::No project ZIP file found in the repository."
+            exit 1
+          fi
+          echo "Using project archive: $ZIP_FILE"
+          mkdir -p extracted-project
+          unzip -q "$ZIP_FILE" -d extracted-project
+          echo "Files extracted. Top-level contents:"
+          find extracted-project -maxdepth 3 -type f | head -n 100
+
+      - name: Locate Gradle Android project
+        id: project
+        run: |
+          set -e
+          GRADLEW="$(find extracted-project -type f -name gradlew | head -n 1)"
+          if [ -z "$GRADLEW" ]; then
+            echo "::error::No Gradle wrapper (gradlew) found inside the ZIP. This workflow only builds Android projects that use Gradle. Check the ZIP contents and game engine."
+            exit 1
+          fi
+          PROJECT_DIR="$(dirname "$GRADLEW")"
+          echo "gradlew=$GRADLEW" >> "$GITHUB_OUTPUT"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Android/Gradle project found at: $PROJECT_DIR"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Build installable debug APK
+        working-directory: ${{ github.workspace }}/${{ steps.project.outputs.project_dir }}
+        run: |
+          chmod +x "${{ github.workspace }}/${{ steps.project.outputs.gradlew }}"
+          "${{ github.workspace }}/${{ steps.project.outputs.gradlew }}" --no-daemon assembleDebug
+
+      - name: Collect APK files
+        run: |
+          set -e
+          mkdir -p release-apk
+          find extracted-project -type f -path '*/build/outputs/apk/*.apk' -exec cp {} release-apk/ \;
+          if [ -z "$(find release-apk -type f -name '*.apk' -print -quit)" ]; then
+            echo "::error::Build completed but no APK was found under build/outputs/apk/."
+            exit 1
+          fi
+          ls -lh release-apk
+
+      - name: Upload APK build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEONRUSH-Android-APK
+          path: release-apk/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub Release when a version tag is pushed
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: NEONRUSH ${{ github.ref_name }}
+          body: |
+            Automated NEONRUSH Android APK build.
+            
+            Note: This workflow builds a debug APK for testing and direct installation. It is not a production-signed release.
+          files: release-apk/*.apk
+          fail_on_unmatched_files: true
